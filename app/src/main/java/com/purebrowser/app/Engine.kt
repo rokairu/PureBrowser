@@ -129,6 +129,8 @@ object Engine {
     fun newTab(url: String? = null, isPrivate: Boolean = false, select: Boolean = true): Tab {
         val rt = requireNotNull(runtime) { "Engine belum start" }
         val sb = GeckoSessionSettings.Builder().usePrivateMode(isPrivate)
+        // Identitas per profil: tiap profil punya User-Agent sendiri.
+        if (profile.ua.isNotBlank()) sb.userAgentOverride(profile.ua)
         // Tab privat tidak memakai contextId (Gecko sudah mengisolasinya sendiri).
         if (!isPrivate) sb.contextId("p" + profile.id.replace("-", ""))
         val session = GeckoSession(sb.build())
