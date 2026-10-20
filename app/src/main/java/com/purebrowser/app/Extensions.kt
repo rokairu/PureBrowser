@@ -64,6 +64,23 @@ object Extensions {
         ): GeckoResult<GeckoSession>? = showPopup()
     }
 
+    // Ekstensi yang memanggil tabs.create (mis. halaman dasbor uBlock) membuka tab biasa.
+    // TabDelegate nempel per-ekstensi di WebExtension (bukan di WebExtensionController).
+    private val tabDelegate = object : WebExtension.TabDelegate {
+        override fun onNewTab(
+            source: WebExtension,
+            createDetails: WebExtension.CreateTabDetails,
+        ): GeckoResult<GeckoSession>? {
+            createDetails.url?.let { Engine.newTab(it) }
+            return null
+        }
+    }
+
+    private fun applyDelegates(extension: WebExtension) {
+        extension.setActionDelegate(actionDelegate)
+        extension.setTabDelegate(tabDelegate)
+    }
+
     private fun showPopup(): GeckoResult<GeckoSession> {
         val s = GeckoSession()
         popup = s
@@ -100,9 +117,9 @@ object Extensions {
         })
 
         c.setAddonManagerDelegate(object : WebExtensionController.AddonManagerDelegate {
-            override fun onInstalled(extension: WebExtension) { extension.setActionDelegate(actionDelegate); refresh() }
+            override fun onInstalled(extension: WebExtension) { applyDelegates(extension); refresh() }
             override fun onUninstalled(extension: WebExtension) { actions.remove(extension.id); refresh() }
-            override fun onEnabled(extension: WebExtension) { extension.setActionDelegate(actionDelegate); refresh() }
+            override fun onEnabled(extension: WebExtension) { applyDelegates(extension); refresh() }
             override fun onDisabled(extension: WebExtension) { refresh() }
             override fun onInstallationFailed(
                 extension: WebExtension?,
@@ -119,17 +136,6 @@ object Extensions {
             }
         })
 
-        // Ekstensi yang memanggil tabs.create (mis. halaman dasbor uBlock) membuka tab biasa.
-        c.setTabDelegate(object : WebExtensionController.TabDelegate {
-            override fun onNewTab(
-                source: WebExtension,
-                createDetails: WebExtension.CreateTabDetails,
-            ): GeckoResult<GeckoSession>? {
-                createDetails.url?.let { Engine.newTab(it) }
-                return null
-            }
-        })
-
         refresh()
     }
 
@@ -138,7 +144,7 @@ object Extensions {
         c.list().accept(
             { exts -> onMain {
                 val sorted = (exts ?: emptyList()).sortedBy { it.metaData?.name ?: it.id }
-                sorted.forEach { it.setActionDelegate(actionDelegate) }
+                sorted.forEach { applyDelegates(it) }
                 list.clear()
                 list.addAll(sorted)
             } },
@@ -182,7 +188,7 @@ object Extensions {
         r.accept(
             { updated -> onMain {
                 if (updated != null) {
-                    updated.setActionDelegate(actionDelegate)
+                    applyDelegates(updated)
                     val i = list.indexOfFirst { it.id == updated.id }
                     if (i >= 0) list[i] = updated else refresh()
                 } else refresh()
