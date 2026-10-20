@@ -21,6 +21,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Prefs.load(this)
         Engine.start(this)
+
+        // Izin notifikasi (Android 13+): untuk notifikasi status VPN.
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
+        }
         geckoView = GeckoView(this)
         handleIntent(intent)
 
