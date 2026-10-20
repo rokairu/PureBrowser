@@ -87,17 +87,6 @@ fun VpnDialog(onClose: () -> Unit) {
         }
     }
 
-    /** Tetapkan config untuk profil browser aktif + langsung terapkan. */
-    fun assign(fileName: String) {
-        Engine.setProfileVpn(fileName)
-        browserProfiles = Engine.profiles.list()
-        if (fileName.isBlank()) {
-            VpnController.disconnect(appCtx)
-        } else if (!(state == Tunnel.State.UP && active?.fileName == fileName)) {
-            profiles.firstOrNull { it.fileName == fileName }?.let { toggle(it) }
-        }
-    }
-
     fun toggle(p: VpnProfile) {
         if (state == Tunnel.State.UP && active?.fileName == p.fileName) {
             VpnController.disconnect(appCtx)
@@ -109,6 +98,17 @@ fun VpnDialog(onClose: () -> Unit) {
             } else {
                 VpnController.connect(appCtx, p)
             }
+        }
+    }
+
+    /** Tetapkan config untuk profil browser aktif + langsung terapkan. */
+    fun assign(fileName: String) {
+        Engine.setProfileVpn(fileName)
+        browserProfiles = Engine.profiles.list()
+        if (fileName.isBlank()) {
+            VpnController.disconnect(appCtx)
+        } else if (!(state == Tunnel.State.UP && active?.fileName == fileName)) {
+            profiles.firstOrNull { it.fileName == fileName }?.let { toggle(it) }
         }
     }
 
