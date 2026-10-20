@@ -28,7 +28,14 @@ val UA_POOL = listOf(
     "Mozilla/5.0 (Android 16; Mobile; rv:153.0) Gecko/153.0 Firefox/153.0",
 )
 
-data class Profile(val id: String, val name: String, val color: Int, val ua: String = "")
+data class Profile(
+    val id: String,
+    val name: String,
+    val color: Int,
+    val ua: String = "",
+    /** fileName config WireGuard pilihan profil ini ("" = tanpa VPN / IP asli). */
+    val vpn: String = "",
+)
 
 /**
  * Daftar profil (profiles.json) + folder data tiap profil
@@ -47,7 +54,7 @@ class ProfileStore(private val ctx: Context) {
         val arr = JSONArray(file.readText())
         List(arr.length()) { i ->
             val o = arr.getJSONObject(i)
-            Profile(o.getString("id"), o.getString("name"), o.getInt("colorArgb"), o.optString("ua", ""))
+            Profile(o.getString("id"), o.getString("name"), o.getInt("colorArgb"), o.optString("ua", ""), o.optString("vpn", ""))
         }
     } catch (_: Exception) {
         emptyList()
@@ -101,6 +108,11 @@ class ProfileStore(private val ctx: Context) {
         save(list().map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }, color = color) else it })
     }
 
+    /** Tetapkan config VPN (fileName) untuk satu profil; "" = tanpa VPN. */
+    fun setVpn(id: String, fileName: String) {
+        save(list().map { if (it.id == id) it.copy(vpn = fileName) else it })
+    }
+
     /** Hapus profil + datanya. Profil aktif dan profil terakhir tidak bisa dihapus. */
     fun delete(id: String): Boolean {
         val all = list()
@@ -131,7 +143,7 @@ class ProfileStore(private val ctx: Context) {
 
     private fun save(list: List<Profile>) {
         val arr = JSONArray()
-        list.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name).put("colorArgb", it.color).put("ua", it.ua)) }
+        list.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name).put("colorArgb", it.color).put("ua", it.ua).put("vpn", it.vpn)) }
         val tmp = File(file.path + ".tmp")
         tmp.writeText(arr.toString())
         tmp.renameTo(file)
