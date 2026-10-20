@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.purebrowser.app.Engine
 import com.wireguard.android.backend.Tunnel
 
 /**
@@ -54,6 +56,7 @@ fun VpnDialog(onClose: () -> Unit) {
     val context = LocalContext.current
     val appCtx = context.applicationContext
     var profiles by remember { mutableStateOf(VpnStore(appCtx).list()) }
+    var browserProfiles by remember { mutableStateOf(Engine.profiles.list()) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
     val state by VpnController.state.collectAsState()
@@ -81,6 +84,17 @@ fun VpnDialog(onClose: () -> Unit) {
             } catch (e: Exception) {
                 errorMsg = e.message
             }
+        }
+    }
+
+    /** Tetapkan config untuk profil browser aktif + langsung terapkan. */
+    fun assign(fileName: String) {
+        Engine.setProfileVpn(fileName)
+        browserProfiles = Engine.profiles.list()
+        if (fileName.isBlank()) {
+            VpnController.disconnect(appCtx)
+        } else if (!(state == Tunnel.State.UP && active?.fileName == fileName)) {
+            profiles.firstOrNull { it.fileName == fileName }?.let { toggle(it) }
         }
     }
 
@@ -141,6 +155,40 @@ fun VpnDialog(onClose: () -> Unit) {
                     Text(text = it, color = Color(0xFFF6AEA9), fontSize = 13.sp)
                     Spacer(Modifier.height(8.dp))
                 }
+                val assignedFile = browserProfiles.firstOrNull { it.id == Engine.profile.id }?.vpn.orEmpty()
+                Text(
+                    text = "VPN untuk profil \"${Engine.profile.name}\"",
+                    fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                )
+                Text(
+                    text = "Tunnel mengikuti profil yang aktif: ganti profil = IP ikut config profil itu.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = assignedFile.isEmpty(), onClick = { assign("") })
+                    Text("Tidak pakai VPN (IP asli)", fontSize = 13.sp)
+                }
+                profiles.forEach { p ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = assignedFile == p.fileName, onClick = { assign(p.fileName) })
+                        Text(p.name, fontSize = 13.sp)
+                    }
+                }
+                val others = browserProfiles.filter { it.id != Engine.profile.id }
+                if (others.isNotEmpty()) {
+                    Text(
+                        text = others.joinToString("\n") { o ->
+                            "Profil \"${o.name}\": " + when {
+                                o.vpn.isBlank() -> "tanpa VPN"
+                                else -> profiles.firstOrNull { it.fileName == o.vpn }?.name ?: "config terhapus (diabaikan)"
+                            }
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().height(220.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -166,7 +214,10 @@ fun VpnDialog(onClose: () -> Unit) {
                                 }
                                 IconButton(onClick = {
                                     if (isActive) VpnController.disconnect(appCtx)
-                                    VpnStore(appCtx).delete(p); refresh()
+                                    VpnStore(appCtx).delete(p)
+                                    Engine.clearVpnAssignments(p.fileName)
+                                    browserProfiles = Engine.profiles.list()
+                                    refresh()
                                 }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Hapus")
                                 }
