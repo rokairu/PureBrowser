@@ -14,7 +14,21 @@ val PALETTE = listOf(
     0xFFC58AF9.toInt(), 0xFF78D9EC.toInt(), 0xFFFFB287.toInt(), 0xFF9AA0A6.toInt(),
 )
 
-data class Profile(val id: String, val name: String, val color: Int)
+/**
+ * Pool User-Agent per profil (Firefox Android; rv mengikuti mesin Gecko 153).
+ * Tiap profil mengambil satu UA yang belum dipakai profil lain, jadi identitas
+ * yang dilihat situs beda antar profil dan stabil (tersimpan di profiles.json).
+ */
+val UA_POOL = listOf(
+    "Mozilla/5.0 (Android 11; Mobile; rv:153.0) Gecko/153.0 Firefox/153.0",
+    "Mozilla/5.0 (Android 12; Mobile; rv:153.0) Gecko/153.0 Firefox/153.0",
+    "Mozilla/5.0 (Android 13; Mobile; rv:153.0) Gecko/153.0 Firefox/153.0",
+    "Mozilla/5.0 (Android 14; Mobile; rv:153.0) Gecko/153.0 Firefox/153.0",
+    "Mozilla/5.0 (Android 15; Mobile; rv:153.0) Gecko/153.0 Firefox/153.0",
+    "Mozilla/5.0 (Android 16; Mobile; rv:153.0) Gecko/153.0 Firefox/153.0",
+)
+
+data class Profile(val id: String, val name: String, val color: Int, val ua: String = "")
 
 /**
  * Daftar profil (profiles.json) + folder data tiap profil
@@ -33,24 +47,53 @@ class ProfileStore(private val ctx: Context) {
         val arr = JSONArray(file.readText())
         List(arr.length()) { i ->
             val o = arr.getJSONObject(i)
-            Profile(o.getString("id"), o.getString("name"), o.getInt("colorArgb"))
+            Profile(o.getString("id"), o.getString("name"), o.getInt("colorArgb"), o.optString("ua", ""))
         }
     } catch (_: Exception) {
         emptyList()
     }
 
-    /** Pastikan minimal ada satu profil. */
+    /** Pastikan minimal ada satu profil, dan semua profil punya User-Agent sendiri. */
     fun ensure(): List<Profile> {
         val now = list()
-        if (now.isNotEmpty()) return now
-        val def = Profile(UUID.randomUUID().toString(), "Pribadi", PALETTE[0])
-        save(listOf(def))
-        return listOf(def)
+        if (now.isEmpty()) {
+            val def = Profile(UUID.randomUUID().toString(), "Pribadi", PALETTE[0], UA_POOL[0])
+            save(listOf(def))
+            return listOf(def)
+        }
+        if (now.any { it.ua.isBlank() }) {
+            val filled = mutableListOf<Profile>()
+            for (p in now) filled += if (p.ua.isBlank()) p.copy(ua = pickUa(filled + now.filter { it.ua.isNotBlank() })) else p
+            save(filled)
+            return filled
+        }
+        return now
+    }
+
+    /** Nama saran untuk profil baru: "Profil 2", "Profil 3", ... — tidak pernah duplikat. */
+    fun nextName(): String {
+        val all = list()
+        val used = all.mapNotNull {
+            Regex("""^Profil\s+(\d+)$""").find(it.name.trim())?.groupValues?.get(1)?.toIntOrNull()
+        }.maxOrNull() ?: 0
+        return "Profil ${maxOf(all.size, used) + 1}"
+    }
+
+    /** UA pertama dari pool yang belum dipakai profil lain. */
+    private fun pickUa(existing: List<Profile>): String {
+        val used = existing.map { it.ua }.toSet()
+        return UA_POOL.firstOrNull { it !in used } ?: UA_POOL[existing.size % UA_POOL.size]
     }
 
     fun add(name: String, color: Int): Profile {
-        val p = Profile(UUID.randomUUID().toString(), name.trim().ifEmpty { "Profil" }, color)
-        save(list() + p)
+        val all = list()
+        val p = Profile(
+            UUID.randomUUID().toString(),
+            name.trim().ifEmpty { nextName() },
+            color,
+            pickUa(all),
+        )
+        save(all + p)
         return p
     }
 
@@ -88,7 +131,7 @@ class ProfileStore(private val ctx: Context) {
 
     private fun save(list: List<Profile>) {
         val arr = JSONArray()
-        list.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name).put("colorArgb", it.color)) }
+        list.forEach { arr.put(JSONObject().put("id", it.id).put("name", it.name).put("colorArgb", it.color).put("ua", it.ua)) }
         val tmp = File(file.path + ".tmp")
         tmp.writeText(arr.toString())
         tmp.renameTo(file)
