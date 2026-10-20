@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,7 +73,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.purebrowser.app.vpn.VpnController
 import com.purebrowser.app.vpn.VpnDialog
+import com.wireguard.android.backend.Tunnel
 import org.mozilla.geckoview.GeckoView
 
 private enum class Panel { TABS, BOOKMARKS, HISTORY, EXTENSIONS, VPN, SETTINGS, PROFILES }
@@ -124,6 +127,14 @@ fun BrowserScreen(activity: Activity, geckoView: GeckoView, onExit: () -> Unit) 
                     ) {
                         Text(Engine.tabs.size.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+                val vpnState by VpnController.state.collectAsState()
+                IconButton(onClick = { panel = Panel.VPN }) {
+                    Icon(
+                        Icons.Filled.Lock,
+                        "VPN",
+                        tint = if (vpnState == Tunnel.State.UP) Color(0xFF81C995) else ink,
+                    )
                 }
                 Box {
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "Menu") }
