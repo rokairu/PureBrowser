@@ -27,16 +27,28 @@ class WgTunnel : Tunnel {
 }
 
 /**
- * Pengendali VPN. Berjalan di level aplikasi (bukan per-profil) karena
- * Android hanya mengizinkan satu VPN aktif — tapi tunnel-nya dibatasi
- * hanya untuk traffic PureBrowser via IncludedApplications.
+ * Pengendali VPN. Tunnel-nya satu di level aplikasi (Android hanya
+ * mengizinkan satu VPN aktif per aplikasi) dan dibatasi hanya untuk
+ * traffic PureBrowser via IncludedApplications — tapi config yang dipakai
+ * mengikuti profil browser yang aktif: tiap profil boleh punya config
+ * sendiri, jadi IP publiknya mengikuti profil (lihat applyForProfile).
  */
 object VpnController {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var backend: GoBackend? = null
     private val tunnel = WgTunnel().apply {
-        onChange = { s -> _state.value = s }
+        onChange = { s ->
+            _state.value = s
+            notifyStatus()
+        }
+    }
+
+    /** Dipanggil setiap status tunnel / config aktif berubah (buat notifikasi status). */
+    var onStatusChanged: ((Tunnel.State, VpnProfile?) -> Unit)? = null
+
+    private fun notifyStatus() {
+        onStatusChanged?.invoke(_state.value, _active.value)
     }
 
     private val _state = MutableStateFlow(Tunnel.State.DOWN)
@@ -73,12 +85,14 @@ object VpnController {
                 val be = backendOf(appCtx)
                 be.setState(tunnel, Tunnel.State.UP, config)
                 _active.value = profile
+                notifyStatus()
                 startStats(appCtx)
                 Log.i(TAG, "VPN terhubung: ${profile.name}")
             } catch (e: Exception) {
                 Log.e(TAG, "Gagal menghubungkan VPN", e)
                 _error.value = e.message ?: "Gagal menghubungkan VPN"
                 _state.value = Tunnel.State.DOWN
+                notifyStatus()
             }
         }
     }
@@ -93,8 +107,31 @@ object VpnController {
                 _active.value = null
                 _stats.value = null
                 statsJob?.cancel()
+                notifyStatus()
             }
         }
+    }
+
+    /**
+     * Samakan tunnel dengan profil browser yang aktif: ada config terpilih ->
+     * sambung config itu; kosong -> putus. Diam-diam (tanpa dialog izin sistem):
+     * bila izin VPN belum diberikan, tunnel dibiarkan mati — user menyambung
+     * manual dari dialog VPN yang memang menampilkan alur izinnya.
+     */
+    fun applyForProfile(ctx: Context, vpnFileName: String) {
+        val appCtx = ctx.applicationContext
+        if (vpnFileName.isBlank()) {
+            if (isUp || _active.value != null) disconnect(appCtx)
+            return
+        }
+        if (_state.value == Tunnel.State.UP && _active.value?.fileName == vpnFileName) return
+        val target = VpnStore(appCtx).list().firstOrNull { it.fileName == vpnFileName }
+        if (target == null || prepareIntent(appCtx) != null) {
+            // Config sudah terhapus, atau izin VPN belum ada.
+            if (isUp) disconnect(appCtx)
+            return
+        }
+        connect(appCtx, target)
     }
 
     private fun startStats(appCtx: Context) {
