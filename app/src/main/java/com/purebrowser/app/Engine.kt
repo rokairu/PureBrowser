@@ -21,6 +21,9 @@ import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.WebResponse
+import com.purebrowser.app.vpn.VpnController
+import com.purebrowser.app.vpn.VpnNotifier
+import com.wireguard.android.backend.Tunnel
 import java.io.File
 import java.util.UUID
 
@@ -112,6 +115,17 @@ object Engine {
             val rt = GeckoRuntime.create(app, settings)
             runtime = rt
             Extensions.init(rt)
+            // VPN mengikuti profil aktif + notifikasi statusnya. Hanya di start
+            // pertama (dan saat ganti profil) — bukan tiap activity dibuat ulang,
+            // supaya putus manual dari dialog VPN tidak dilawan.
+            VpnController.onStatusChanged = { state, active ->
+                if (state == Tunnel.State.UP && active != null) {
+                    VpnNotifier.show(app, profile.name, active.name)
+                } else {
+                    VpnNotifier.clear(app)
+                }
+            }
+            VpnController.applyForProfile(app, profile.vpn)
         }
         if (tabs.isEmpty() && !restoreSession()) newTab()
     }
@@ -194,8 +208,21 @@ object Engine {
         activeTabId = null
         fullScreen = false
         useProfile(target)
+        VpnController.applyForProfile(app, target.vpn)
         if (!restoreSession()) newTab()
         old.forEach { runCatching { it.session.close() } }
+    }
+
+    /** Tetapkan config VPN untuk profil aktif (dipakai dialog VPN). Tidak langsung menyambung. */
+    fun setProfileVpn(fileName: String) {
+        profiles.setVpn(profile.id, fileName)
+        profiles.list().firstOrNull { it.id == profile.id }?.let { profile = it }
+    }
+
+    /** Bersihkan penetapan VPN di semua profil yang menunjuk config ini (config dihapus). */
+    fun clearVpnAssignments(fileName: String) {
+        profiles.list().filter { it.vpn == fileName }.forEach { profiles.setVpn(it.id, "") }
+        profiles.list().firstOrNull { it.id == profile.id }?.let { profile = it }
     }
 
     fun editProfile(id: String, name: String, color: Int) {
