@@ -180,8 +180,13 @@ fun ProfilesDialog(onClose: () -> Unit) {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(p.name, fontWeight = if (active) FontWeight.Bold else FontWeight.Normal)
-                            if (active) {
-                                Text("Aktif", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            val uaLabel = Regex("""Android (\d+)""").find(p.ua)?.let { "User-Agent Android ${it.groupValues[1]}" }
+                            val sub = listOfNotNull(if (active) "Aktif" else null, uaLabel).joinToString(" • ")
+                            if (sub.isNotEmpty()) {
+                                Text(
+                                    sub, fontSize = 12.sp,
+                                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                         IconButton(onClick = { editing = p }) { Icon(Icons.Filled.Edit, "Ubah") }
@@ -197,7 +202,7 @@ fun ProfilesDialog(onClose: () -> Unit) {
     )
 
     if (adding) {
-        ProfileEditor("Profil baru", "", PALETTE[0], { adding = false }) { n, c ->
+        ProfileEditor("Profil baru", Engine.profiles.nextName(), PALETTE[list.size % PALETTE.size], { adding = false }) { n, c ->
             Engine.profiles.add(n, c)
             list = Engine.profiles.list()
             adding = false
